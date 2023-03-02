@@ -1,0 +1,189 @@
+---
+title: "p8451_assignment_7"
+output: html_document
+date: "2023-03-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Part 1: Data Cleaning
+
+### Loading packages and preparing dataset
+
+To proceed with the problem set, the following libraries will be used in addition to base R
+
+```{r}
+library(tidyverse)
+library(rpart)
+library(rpart.plot)
+library(pROC)
+library(caret)
+library(randomForest)
+
+set.seed(123)
+```
+
+The data set was comprised of the 16 variables below:
+
+* ID: identifier
+* Age: age in initial MI (years)
+* Sex: reported by patient
+* Sodium: serum sodium (mmol/L)
+* ALT: liver enzymes (IU/L)
+* WBC: white blood cell count (billions/L)
+* ESR: erythrocyte sedimentation rate
+* SBP: systolic blood pressure at intake (mmHg)
+* DBP: diastolic blood pressure at intake (mmHg)
+* Pulm.adema: pulmonary adema (yes or no)
+* FC: functional class of angina pectoris in the last year (no angina pectoris, I FC, II FC, III FC, IV FC)
+* Arrythmia: prescence of arrythmia (yes or no)
+* Diab: presence of diabetes (yes or no)
+* Obesity: presence of obesity (yes or no)
+* Asthma: presence of asthma (yes or no)
+* Readmission: readmitted to hospital within 30 days (yes or no)
+
+The data set was first imported using the `read_csv` function, and the `clean_names` function was used to tidy variable names. The `skim` function was then used to summarise the data set and observe the variable times. The `skim` function revealed that all 16 variables were numerical variables. Based off of the given codebook, the following variables were converted to factor variables:
+
+* Sex (`sex`)
+* Pulmonary adema (`pul_adema`)
+* Functional class of angina pectoris (`fc`)
+* Arrythmia (`arr`)
+* Presence of diabetes (`diab`)
+* Presence of obesity (`obesity`)
+* Presence of asthma (`asthma`)
+* Readmission (`readmission`)
+
+Missing variables were then omitted using `na.omit` and the variables `id` and `sex` were dropped. The summary function was then used to check the balance of the data for the outcome of interest `readmission`.
+
+```{r}
+mi_data = read_csv(file = "data/mi.data.csv") %>%
+  janitor::clean_names()
+skimr::skim(mi_data)
+
+mi_data = 
+  mi_data %>%
+  mutate(
+    sex = factor(sex, labels = c("Male", "Female", "Non-binary/Other")),
+    pulm_adema = factor(pulm_adema, labels = c("No", "Yes")),
+    fc = factor(fc, labels = c("No angina pectoris", 
+                               "I FC", 
+                               "II FC", 
+                               "III FC", 
+                               "IV FC")),
+    arr = factor(arr, labels = c("No", "Yes")),
+    diab = factor(diab, labels = c("No", "Yes")),
+    obesity = factor(obesity, labels = c("No", "Yes")),
+    asthma = factor(asthma, labels = c("No", "Yes")),
+    readmission = factor(asthma, labels = c("No", "Yes"))
+  ) %>%
+  na.omit() %>%
+  dplyr::select(-id, -sex)
+
+summary(mi_data$readmission)
+```
+
+The data set is comprised of 1,700 observations of 14 variables, 8 of which are factor variables (listed above) and 7 of which are numeric (`age`, `sodium`, `alt`, `wbc`, `esr`, `sbp`, and `dbp`). 
+
+A summary of our outcome of interest, `readmission`, shows that the data is unbalanced, with 1,662 observations of no hospital readmission within 30 days and 38 observations of hospital readmission within 30 days. 
+
+## Creating balanced partitions in the data 
+
+The data is then partitioned into training and testing data using a 70/30 split through the function `createDataPartition` The training and testing data set is generated with an equal proportion of individuals with the outcome of interest, `readmission`.
+
+```{r}
+set.seed(123)
+
+train_indices = 
+  createDataPartition(y = mi_data$readmission, p = 0.7, 
+                      list = FALSE)
+
+mi_train = mi_data[train_indices, ]
+mi_test = mi_data[-train_indices, ]
+```
+
+## Part 2: Creating and coparing two different models
+
+The following two models will be created and compared to generate an optimal model for predicting hospital readmission:
+
+* Elastic net
+* Random forest 
+
+### Elastic net
+
+To creat the elastic net model, we will use the function `tuneLength` to set the number of combinations of different values of alpha and lambda to compare. In this model, we set tunelength to 20 to produce 20 values of alpha and 10 values of lambda. We then print the values of alpha and lambda that give the best prediction (the value in which RMSE is most minimised).
+
+To obtain the model coefficients at the best tune, we use the function `coef`
+
+```{r}
+set.seed(123)
+en.model = train(
+  readmission ~.,
+  data = mi_train ,
+  method = "glmnet",
+  trControl = trainControl("cv", number = 20),
+  preProc = c("center", "scale"),
+  tuneLength = 20
+)
+
+en.model$bestTune %>%
+  knitr::kable()
+
+coef(en.model$finalModel, en.model$bestTune$lambda)
+```
+
+The values of alpha and lambda that give the best prediction are 0.1 and 0.0798634, respectively. 
+
+```{r}
+confusionMatrix(en.model)
+```
+
+Running a confusion matrix shows that the accuracy value for the elastic net model from the training data set is 1.0. 
+
+### Random forest 
+
+
+
+### Comparing models
+
+The following accuracy valuse were obtained from the training data set for the two models: 
+* Elastic net: 1.0
+* Random forest: 
+
+Since the elastic net model resulted in the highest accuracy value among the two prediction models, we can conclude that the elastic net model is the optimal model.
+
+## Part 3: The optimal model - elastic net
+
+The elastic net model is used to feed into the testing data set through the `predict` function and the final evaluation metrics are determined through generating a confusion matrix.
+
+```{r}
+set.seed(123)
+
+en.pred = en.model %>%
+  predict(mi_test)
+          
+postResample(en.pred, mi_test$readmission) %>%
+  knitr::kable()
+
+confusionMatrix(en.pred, mi_test$readmission)
+```
+
+The confusion matrix reports an accuracy of 1.0 (95% CI: 0.9928, 1) and a kappa value of 1. The model's p-value is 1.48e-05 with a sensitivity of 1.0000 and a specificity of 1.0000. The reporetd PPV is 1.0000, the reported NPV is 1.0000, and the prevalence is 0.9784. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
