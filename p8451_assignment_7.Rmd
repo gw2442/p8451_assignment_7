@@ -143,17 +143,43 @@ Running a confusion matrix shows that the accuracy value for the elastic net mod
 
 ### Random forest 
 
+In a random forest value, the value of mtry (the hyperparameter that controls the number of features eligible for each split) is varied to see how it affects the model's accuracy. The varied value of mtry distinguishes random forest from bagging. In this random forest model, we vary the value of mtry three times.
 
+To conduct a random forest model, we conduct a 20-fold cross validation and set the method of the `train` function to `rf`. We specify the 100 trees. 
+
+```{r}
+mtry.vals = c(ncol(mi_train)-1, sqrt(ncol(mi_train)-1), 0.5*ncol(mi_train)-1)
+mtry.grid = expand.grid(.mtry=round(mtry.vals))
+
+rf.model = train(readmission ~.,
+                 data = mi_train,
+                 method = "rf",
+                 metric = "Accuracy",
+                 tuneGrid = mtry.grid,
+                 trControl = trainControl("cv", number = 20),
+                 ntree = 100)
+
+rf.model$bestTune
+rf.model$results
+rf.model$finalModel
+
+varImp(rf.model)
+plot(varImp(rf.model))
+
+confusionMatrix(rf.model)
+```
+
+Looking at the results demonstrates that for the three different values of mtry, each mtry value reported an accuracy value of 1 and a kappa value of 1. Looking at variable importance demonstrates that Asthma as the standout variable. This can also be observed in the generated plot. Finally, running a confusion matrix shows that the accuracy value for the random forest model from the training data set is also 1.0. 
 
 ### Comparing models
 
 The following accuracy valuse were obtained from the training data set for the two models: 
 * Elastic net: 1.0
-* Random forest: 
+* Random forest: 1.0 
 
-Since the elastic net model resulted in the highest accuracy value among the two prediction models, we can conclude that the elastic net model is the optimal model.
+Since both the elastic net model and the random forest model resulted in a accuracy value of 1, we can conclude that neither model is superior to the other. Therefore, either model can be used to be fed into the testing data. We select the elastic net model.
 
-## Part 3: The optimal model - elastic net
+## Part 3: Final model - elastic net
 
 The elastic net model is used to feed into the testing data set through the `predict` function and the final evaluation metrics are determined through generating a confusion matrix.
 
